@@ -8,10 +8,10 @@ import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms.v2 as T
-
 from minidiff.unet import UNet
 
 PATH_MNIST = str(Path(__file__).parent.parent)
+SAMPLES_FOLDER = "output/samples"
 
 
 def train(
@@ -49,7 +49,6 @@ def train(
         [
             T.PILToTensor(),
             T.ToDtype(torch.float32, scale=True),
-            T.RandomRotation(degrees=10),
             T.Lambda(lambda x: (x - x.mean()) / x.std()),
         ]
     )
@@ -78,8 +77,8 @@ def train(
     sqrt_alpha_cum_prod = torch.sqrt(alpha_cum_prod)
     sqrt_one_minus_alpha_cum_prod = torch.sqrt(1 - alpha_cum_prod)
 
-    # -------------------- Training --------------------
-    model = UNet().cuda()
+    # -------------------- Training loop --------------------
+    model = UNet(num_blocks=4).cuda()
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=lr,
@@ -88,18 +87,16 @@ def train(
 
     train_losses, val_losses = [], []
     for epoch in range(num_epochs):
-        # -------------------- Training --------------------
+        # -------------------- Backprop --------------------
         model.train()
         print(f"[Training  ] Epoch {epoch + 1}/{num_epochs}", end="\r")
         train_epoch_losses = []
         for i, (x_0, _) in enumerate(train_dataloader):
-            # if i == 5:
-            #     break
             x_0 = x_0.cuda()
             timesteps = torch.randint(
                 1, num_diffusion_steps + 1, (x_0.shape[0],), device="cuda"
             )
-            noise = torch.randn_like(x_0, device="cuda")
+            noise = torch.randn_like(x_0)
             x_noisy = (
                 sqrt_alpha_cum_prod[timesteps - 1] * x_0
                 + sqrt_one_minus_alpha_cum_prod[timesteps - 1] * noise
@@ -129,14 +126,14 @@ def train(
                     timesteps = torch.randint(
                         1, num_diffusion_steps + 1, (x_0.shape[0],), device="cuda"
                     )
-                    noise = torch.randn_like(x_0, device="cuda")
+                    noise = torch.randn_like(x_0)
                     if i == 0:
                         # -------------------- Generate samples --------------------
                         num_samples = 6
-                        x_t = torch.randn_like(x_0[:num_samples], device="cuda")
+                        x_t = torch.randn_like(x_0[:num_samples])
                         for ts in range(num_diffusion_steps, 0, -1):
                             ts_t = torch.tensor([ts] * num_samples, device="cuda")
-                            z_t = torch.randn_like(x_t, device="cuda")
+                            z_t = torch.randn_like(x_t) if ts > 1 else 0
                             noise_pred = model(x_t, ts_t)
                             term1 = 1 / torch.sqrt(alpha_schedule[ts - 1])
                             term2 = (
@@ -158,9 +155,9 @@ def train(
                         plt.imshow(x_t_minus_1, cmap="gray")
                         plt.title(f"Epoch {epoch + 1}")
                         plt.axis("off")
-                        plt.show()
                         plt.savefig(
-                            f"samples/epoch_{epoch + 1}.png", bbox_inches="tight"
+                            f"{SAMPLES_FOLDER}/epoch_{epoch + 1}.png",
+                            bbox_inches="tight",
                         )
                         plt.close()
                         # -----------------------------------------------------------
@@ -179,7 +176,7 @@ def train(
                 mean_val_loss = sum(val_epoch_losses) / len(val_epoch_losses)
                 # -------------------- Save best model --------------------
                 save_suffix = ""
-                if mean_val_loss < min(val_losses, default=-float("inf")):
+                if mean_val_loss < min(val_losses, default=float("inf")):
                     torch.save(model.state_dict(), f"best_model.ckpt")
                     save_suffix = " | Current best loss, saving model"
                 print(
@@ -190,10 +187,10 @@ def train(
 
 
 if __name__ == "__main__":
-    num_epochs = 100
-    batch_size = 2048
+    num_epochs = 1000
+    batch_size = 1024
     lr = 2e-4
     num_diffusion_steps = 1000
     val_every_n_epochs = 5
-    Path("samples").mkdir(exist_ok=True)
+    Path(SAMPLES_FOLDER).mkdir(exist_ok=True)
     train(num_epochs, batch_size, lr, num_diffusion_steps, val_every_n_epochs)

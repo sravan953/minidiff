@@ -17,7 +17,8 @@ class ResBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, t_encoding: torch.Tensor) -> torch.Tensor:
         x = x + self.t_proj(t_encoding).unsqueeze(2).unsqueeze(3)
-        x_out = nn.functional.relu(self.bn2(self.conv2(self.bn1(self.conv1(x)))))
+        x_out = nn.functional.relu(self.bn1(self.conv1(x)))
+        x_out = nn.functional.relu(self.bn2(self.conv2(x_out)))
         x_out = x_out + self.residual(x)
         return x_out
 
@@ -44,13 +45,14 @@ class UpResBlock(ResBlock):
         )
         x = torch.cat([x, skip], dim=1)
         x = x + self.t_proj(timestep_encoded).unsqueeze(2).unsqueeze(3)
-        x_out = nn.functional.relu(self.bn2(self.conv2(self.bn1(self.conv1(x)))))
+        x_out = nn.functional.relu(self.bn1(self.conv1(x)))
+        x_out = nn.functional.relu(self.bn2(self.conv2(x_out)))
         x_out = x_out + self.residual(x)
         return x_out
 
 
 class UNet(nn.Module):
-    def __init__(self, num_blocks: int = 4, num_steps: int = 1000):
+    def __init__(self, num_blocks: int, num_steps: int = 1000):
         super().__init__()
 
         self.num_blocks = num_blocks

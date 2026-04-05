@@ -4,6 +4,8 @@ Recently got back to DDPMs and had to brush up on my basics. Inspired by Karpath
 
 In this work, I train a DDPM to unconditionally generate MNIST samples.
 
+![Unconditional MNIST samples generation](sample_T1000.png)
+
 ## Setup
 Dependency management is via [uv](https://docs.astral.sh/uv/):
 
